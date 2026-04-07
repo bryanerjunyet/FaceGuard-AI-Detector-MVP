@@ -1,13 +1,16 @@
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from .core.settings_loader import load_settings
-from .schemas import HealthResponse
+from .schemas import HealthResponse, PredictionResponse
+from .services.model_service import model_service_from_settings
+from .services.preprocessing import image_to_tensor, strip_exif_and_load_image, validate_upload
 
 
 settings = load_settings()
+model_service = model_service_from_settings(settings)
 
 
 app = FastAPI(
@@ -25,9 +28,51 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+def startup_event() -> None:
+    try:
+        model_service.ensure_loaded()
+    except FileNotFoundError:
+        # Allow startup when checkpoint is absent; analyze returns clear 503.
+        return
+
+
 @app.get("/api/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse(
-        model_ready=False,
+        model_ready=model_service.model_ready,
         model_name=settings.model_name,
+    )
+
+
+@app.post("/api/analyze", response_model=PredictionResponse)
+def analyze_image(file: UploadFile = File(...)) -> PredictionResponse:
+    try:
+        model_service.ensure_loaded()
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    raw = validate_upload(
+        upload=file,
+        allowed_mime_types=settings.allowed_mime_types,
+        max_upload_bytes=settings.max_upload_bytes,
+    )
+    image = strip_exif_and_load_image(raw)
+    tensor = image_to_tensor(
+        image=image,
+        image_size=model_service.image_size,
+        device=model_service.device,
+        mean=model_service.mean,
+        std=model_service.std,
+    )
+
+    result = model_service.predict(tensor)
+
+    return PredictionResponse(
+        label=result.label,
+        confidence=result.confidence,
+        fake_probability=result.fake_probability,
+        threshold=result.threshold,
+        explanation=result.explanation,
+        model_name=result.model_name,
     )
