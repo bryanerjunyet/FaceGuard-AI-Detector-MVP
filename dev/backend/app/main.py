@@ -4,13 +4,22 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from .core.settings_loader import load_settings
-from .schemas import HealthResponse, PredictionResponse
+from .schemas import (
+    HealthResponse,
+    PredictionResponse,
+    SignInRequest,
+    SignInResponse,
+    SignUpRequest,
+    SignUpResponse,
+)
+from .services.auth_service import AuthService
 from .services.model_service import model_service_from_settings
 from .services.preprocessing import image_to_tensor, strip_exif_and_load_image, validate_upload
 
 
 settings = load_settings()
 model_service = model_service_from_settings(settings)
+auth_service = AuthService(enabled=settings.enable_database)
 
 
 app = FastAPI(
@@ -43,6 +52,47 @@ def health() -> HealthResponse:
         model_ready=model_service.model_ready,
         model_name=settings.model_name,
     )
+
+
+@app.post("/api/auth/signin", response_model=SignInResponse)
+def sign_in(payload: SignInRequest) -> SignInResponse:
+    email = payload.email.strip()
+    password = payload.password
+
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Email and password are required.")
+
+    success, message, status_code = auth_service.authenticate(
+        email=email,
+        password=password,
+    )
+
+    if not success:
+        raise HTTPException(status_code=status_code, detail=message)
+
+    return SignInResponse(success=True, message=message)
+
+
+@app.post("/api/auth/signup", response_model=SignUpResponse)
+def sign_up(payload: SignUpRequest) -> SignUpResponse:
+    email = payload.email.strip()
+    password = payload.password
+
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Email and password are required.")
+
+    if len(password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
+
+    success, message, status_code = auth_service.register(
+        email=email,
+        password=password,
+    )
+
+    if not success:
+        raise HTTPException(status_code=status_code, detail=message)
+
+    return SignUpResponse(success=True, message=message)
 
 
 @app.post("/api/analyze", response_model=PredictionResponse)
