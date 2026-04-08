@@ -1,8 +1,19 @@
 from dataclasses import dataclass
+import os
 from pathlib import Path
+
+from dotenv import load_dotenv
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+load_dotenv(dotenv_path=REPO_ROOT / ".env", override=False)
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 @dataclass(frozen=True)
@@ -39,13 +50,14 @@ class FaceGuardSettings:
     # Frontend/backend local development
     backend_host: str = "127.0.0.1"
     backend_port: int = 8000
-    frontend_origin: str = "http://localhost:5173"
+    frontend_origin: str = os.getenv("FACEGUARD_FRONTEND_ORIGIN", "http://localhost:5173")
 
-    # Placeholder for future persistence
-    enable_database: bool = False
-    database_url: str = "mongodb://localhost:27017/faceguard"
-    database_name: str = "faceguard"
-    upload_collection: str = "uploads"
+    # Optional MongoDB persistence and auth settings
+    enable_database: bool = _env_bool("FACEGUARD_ENABLE_DATABASE", False)
+    database_url: str = os.getenv("FACEGUARD_DATABASE_URL", "mongodb://localhost:27017/faceguard")
+    database_name: str = os.getenv("FACEGUARD_DATABASE_NAME", "faceguard")
+    upload_collection: str = os.getenv("FACEGUARD_UPLOAD_COLLECTION", "uploads")
+    users_collection: str = os.getenv("FACEGUARD_USERS_COLLECTION", "users")
 
     @property
     def max_upload_bytes(self) -> int:
