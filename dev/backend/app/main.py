@@ -19,7 +19,12 @@ from .services.preprocessing import image_to_tensor, strip_exif_and_load_image, 
 
 settings = load_settings()
 model_service = model_service_from_settings(settings)
-auth_service = AuthService(enabled=settings.enable_database)
+auth_service = AuthService(
+    enabled=settings.enable_database,
+    database_url=settings.database_url,
+    database_name=settings.database_name,
+    users_collection=settings.users_collection,
+)
 
 
 app = FastAPI(
