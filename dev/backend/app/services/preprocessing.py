@@ -37,3 +37,29 @@ def strip_exif_and_load_image(raw: bytes) -> Image.Image:
     source.save(cleaned_buffer, format="PNG")
     cleaned_buffer.seek(0)
     return Image.open(cleaned_buffer).convert("RGB")
+
+
+def build_inference_transform(
+    image_size: int,
+    mean: tuple[float, ...] = (0.485, 0.456, 0.406),
+    std: tuple[float, ...] = (0.229, 0.224, 0.225),
+) -> transforms.Compose:
+    return transforms.Compose(
+        [
+            transforms.Resize((image_size, image_size)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=list(mean), std=list(std)),
+        ]
+    )
+
+
+def image_to_tensor(
+    image: Image.Image,
+    image_size: int,
+    device: torch.device,
+    mean: tuple[float, ...] = (0.485, 0.456, 0.406),
+    std: tuple[float, ...] = (0.229, 0.224, 0.225),
+) -> torch.Tensor:
+    transform = build_inference_transform(image_size=image_size, mean=mean, std=std)
+    tensor = transform(image).unsqueeze(0).to(device)
+    return tensor
