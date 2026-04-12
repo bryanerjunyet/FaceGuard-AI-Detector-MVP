@@ -143,7 +143,9 @@ Example response:
   "fake_probability": 0.9123,
   "threshold": 0.5,
   "explanation": "Prediction is based on a ViT deepfake classifier...",
-  "model_name": "vit"
+  "model_name": "vit",
+  "heatmap_overlay": "data:image/png;base64,...",
+  "explainability_method": "grad_cam"
 }
 ```
 
