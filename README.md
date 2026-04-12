@@ -1,8 +1,25 @@
 # FaceGuard: a Privacy-Preserving AI for Detecting Deepfake Profile Photos
 
+<p align="center">
+  <img src="dev/frontend/src/assets/logo.png" alt="FaceGuard logo" width="250" />
+</p>
+
 MCS24 Team is dedicated to develop **FaceGuard: a Privacy-Preserving AI for Detecting Deepfake Profile Photos**, a user-friendly web-based system to accurately identify and classify AI-generated human face images on social media and dating platforms. **FaceGuard** is anticipated to deliver a fully functional web-based system with visual explainability via Grad-CAM heatmaps that can accurately classify profile photos as real or AI-generated. 
 
-> **NOTICE:** This repository is intended for Monash academic and MVP prototype use.
+> **INTELLECTUAL PROPERTY NOTICE:** 
+> 
+> **FaceGuard** and all original materials in this repository (including source code, UI design, documentation, model integration logic and project artifacts) are intellectual property of the **MCS24 Team** unless otherwise stated.
+>
+> **Copyright © 2025/26 MCS24 Team. All rights reserved.**
+>
+> Third-party components, datasets and model weights remain the property of their respective owners and are subject to their original licenses and terms. Refer to [THIRD_PARTY_NOTICES.md](models/THIRD_PARTY_NOTICES.md) for attribution details.
+> 
+> If you reference this project in reports, demos or derivative works, please credit it as:
+> ```
+> FaceGuard: a Privacy-Preserving AI for Detecting Deepfake Profile Photos, MCS24 Team, 2026.
+> ```
+>
+> **DISCLAIMER:** This project is for educational and research purposes only. It is not intended for commercial use and is not endorsed by any organization or entity. Use at your own risk.
 
 ## Project Overview
 
@@ -14,6 +31,8 @@ The FaceGuard MVP provides:
 - In-memory processing with no database persistence
 - Account authentication and authorisation
 - Explainability overlays (Grad-CAM heatmaps)
+
+![FaceGuard result panel sample](result_panel.png)
 
 ## Repository Structure
 
@@ -175,6 +194,4 @@ Supporting design and project materials are available in:
 
 For development operations and troubleshooting guidance, refer to [**Developer Guide**](DEVELOPER_GUIDE.md).
 
-## Third-Party Notices
 
-Model and dataset provenance information is maintained in [**Third-Party Notices**](models/THIRD_PARTY_NOTICES.md).
