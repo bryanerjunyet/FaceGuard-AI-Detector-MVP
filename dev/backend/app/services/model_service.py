@@ -172,3 +172,228 @@ def _resolve_spec(model_name: str) -> ModelSpec:
             return spec
     supported = ", ".join(MODEL_REGISTRY.keys())
     raise ValueError(f"Unknown model '{model_name}'. Supported: {supported}")
+
+
+class InferenceService:
+    """Generic inference service with optional Grad-CAM overlay generation."""
+
+    def __init__(self, model_name: str, model_path: Path, threshold: float) -> None:
+        self.model_name = model_name
+        self.model_path = Path(model_path)
+        self.threshold = threshold
+
+        self._spec = _resolve_spec(model_name)
+        self.image_size = self._spec.image_size
+        self.mean = self._spec.mean
+        self.std = self._spec.std
+
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self._model: nn.Module | None = None
+        self._ready = False
+        self._lock = Lock()
+
+    @property
+    def model_ready(self) -> bool:
+        return self._ready
+
+    def ensure_loaded(self) -> None:
+        if self._ready and self._model is not None:
+            return
+        with self._lock:
+            if self._ready and self._model is not None:
+                return
+            self._model = self._load_model()
+            self._ready = True
+
+    def _load_model(self) -> nn.Module:
+        if not self.model_path.exists():
+            raise FileNotFoundError(
+                f"Checkpoint not found at '{self.model_path}'. Place the .pth file in models/pretrained/."
+            )
+
+        model = self._spec.build_fn()
+        checkpoint = torch.load(self.model_path, map_location=self.device)
+
+        if isinstance(checkpoint, dict):
+            for wrapper_key in ("state_dict", "model_state_dict"):
+                if wrapper_key in checkpoint and isinstance(checkpoint[wrapper_key], dict):
+                    checkpoint = checkpoint[wrapper_key]
+                    break
+
+        model_keys = set(model.state_dict().keys())
+        ckpt_keys = set(checkpoint.keys())
+        if not model_keys & ckpt_keys:
+            prefix = next(iter(ckpt_keys)).split(".")[0] + "."
+            stripped = {k[len(prefix):]: v for k, v in checkpoint.items() if k.startswith(prefix)}
+            if set(stripped.keys()) & model_keys:
+                checkpoint = stripped
+
+        model.load_state_dict(checkpoint, strict=False)
+        model.to(self.device)
+        model.eval()
+        return model
+
+    def _forward_model(self, image_tensor: torch.Tensor) -> Any:
+        if self._model is None:
+            raise RuntimeError("Model is not loaded.")
+
+        if isinstance(self._model, FairDetector):
+            return self._model({"image": image_tensor}, inference=True)
+        return self._model(image_tensor)
+
+    def _resolve_cam_targets(self) -> tuple[list[nn.Module], Callable[[torch.Tensor], torch.Tensor] | None]:
+        if self._model is None:
+            raise RuntimeError("Model is not loaded.")
+
+        model_name = self.model_name.lower()
+        if "vit" in model_name:
+            grid_size = self.image_size // 16
+            target_layers = [self._model.encoder.layers[-1].ln_1]  # type: ignore[attr-defined]
+
+            def reshape_transform(tensor: torch.Tensor) -> torch.Tensor:
+                result = tensor[:, 1:, :].reshape(tensor.size(0), grid_size, grid_size, tensor.size(2))
+                return result.transpose(2, 3).transpose(1, 2)
+
+            return target_layers, reshape_transform
+
+        if "xception" in model_name and isinstance(self._model, Xception):
+            return [self._model.bn4], None
+
+        if "pg_fdd" in model_name and isinstance(self._model, FairDetector):
+            return [self._model.block_fair.conv2d[-1]], None
+
+        raise ValueError(f"No Grad-CAM target layer mapping for model '{self.model_name}'.")
+
+    def _denormalize_to_rgb(self, image_tensor: torch.Tensor) -> np.ndarray:
+        image = image_tensor.detach().cpu()[0].clone()
+        for channel_index, (mean, std) in enumerate(zip(self.mean, self.std)):
+            image[channel_index] = (image[channel_index] * std) + mean
+        rgb = image.permute(1, 2, 0).numpy()
+        return np.clip(rgb, 0.0, 1.0).astype(np.float32)
+
+    @staticmethod
+    def _image_to_rgb_float(image: Image.Image) -> np.ndarray:
+        rgb = np.asarray(image.convert("RGB"), dtype=np.float32) / 255.0
+        return np.clip(rgb, 0.0, 1.0)
+
+    @staticmethod
+    def _resize_cam_mask(mask: np.ndarray, target_height: int, target_width: int) -> np.ndarray:
+        cam_tensor = torch.from_numpy(mask).unsqueeze(0).unsqueeze(0)
+        resized = F.interpolate(
+            cam_tensor,
+            size=(target_height, target_width),
+            mode="bilinear",
+            align_corners=False,
+        )
+        return resized[0, 0].numpy()
+
+    @staticmethod
+    def _encode_png_data_url(rgb_uint8_image: np.ndarray) -> str:
+        pil_image = Image.fromarray(rgb_uint8_image)
+        buffer = BytesIO()
+        pil_image.save(buffer, format="PNG")
+        encoded = base64.b64encode(buffer.getvalue()).decode("utf-8")
+        return f"data:image/png;base64,{encoded}"
+
+    def _generate_grad_cam_overlay(
+        self,
+        image_tensor: torch.Tensor,
+        label: str,
+        source_image: Image.Image | None = None,
+    ) -> str | None:
+        if self._model is None or GradCAM is None or show_cam_on_image is None:
+            return None
+
+        try:
+            target_layers, reshape_transform = self._resolve_cam_targets()
+            cam_model = _CamModelAdapter(self._model, self.model_name).to(self.device)
+            cam_model.eval()
+            targets = [_BinaryLogitTarget(label)]
+
+            with GradCAM(model=cam_model, target_layers=target_layers, reshape_transform=reshape_transform) as cam:
+                grayscale_cam = cam(
+                    input_tensor=image_tensor,
+                    targets=targets,
+                    aug_smooth=True,
+                    eigen_smooth=True,
+                )
+                grayscale_cam = grayscale_cam[0, :]
+
+            if source_image is not None:
+                rgb_image = self._image_to_rgb_float(source_image)
+            else:
+                rgb_image = self._denormalize_to_rgb(image_tensor)
+
+            target_height, target_width = rgb_image.shape[0], rgb_image.shape[1]
+            if grayscale_cam.shape != (target_height, target_width):
+                grayscale_cam = self._resize_cam_mask(
+                    mask=grayscale_cam,
+                    target_height=target_height,
+                    target_width=target_width,
+                )
+
+            overlay = show_cam_on_image(rgb_image, grayscale_cam, use_rgb=True)
+            return self._encode_png_data_url(overlay)
+        except Exception:
+            return None
+
+    def _build_explanation(self, fake_probability: float, label: str, has_heatmap: bool) -> str:
+        threshold_percent = round(self.threshold * 100, 1)
+        fake_percent = round(fake_probability * 100, 2)
+        if label == "FAKE":
+            outcome_text = (
+                f"Fake evidence score is {fake_percent}%, above the decision threshold ({threshold_percent}%)."
+            )
+        else:
+            outcome_text = (
+                f"Fake evidence score is {fake_percent}%, below the decision threshold ({threshold_percent}%)."
+            )
+
+        if has_heatmap:
+            return (
+                f"Prediction is based on {self._spec.description}. {outcome_text} "
+                "The Grad-CAM overlay highlights image regions that most influenced this decision."
+            )
+        return (
+            f"Prediction is based on {self._spec.description}. {outcome_text} "
+            "Grad-CAM overlay was unavailable for this request."
+        )
+
+    def predict(self, image_tensor: torch.Tensor, source_image: Image.Image | None = None) -> PredictionResult:
+        with torch.no_grad():
+            output = self._forward_model(image_tensor)
+            fake_probability = self._spec.extract_prob(output)
+
+        is_fake = fake_probability >= self.threshold
+        label = "FAKE" if is_fake else "REAL"
+        confidence = fake_probability if is_fake else 1.0 - fake_probability
+
+        heatmap_overlay = self._generate_grad_cam_overlay(
+            image_tensor=image_tensor,
+            label=label,
+            source_image=source_image,
+        )
+        explanation = self._build_explanation(
+            fake_probability=fake_probability,
+            label=label,
+            has_heatmap=heatmap_overlay is not None,
+        )
+
+        return PredictionResult(
+            label=label,
+            confidence=round(confidence, 4),
+            fake_probability=round(fake_probability, 4),
+            threshold=self.threshold,
+            explanation=explanation,
+            model_name=self.model_name,
+            heatmap_overlay=heatmap_overlay,
+            explainability_method="grad_cam" if heatmap_overlay is not None else "none",
+        )
+
+
+def model_service_from_settings(settings: Any) -> InferenceService:
+    return InferenceService(
+        model_name=settings.model_name,
+        model_path=settings.model_path,
+        threshold=settings.fake_threshold,
+    )
