@@ -26,7 +26,7 @@ class FaceGuardSettings:
     #
     # ViT-B/16 (currently active):
     model_name: str = "vit"
-    model_path: Path = REPO_ROOT / "models" / "pretrained" / "vit.pth"
+    model_path: Path = REPO_ROOT / "models" / "baseline" / "vit9.pth"
     #
     # Xception:
     # model_name: str = "xception"
