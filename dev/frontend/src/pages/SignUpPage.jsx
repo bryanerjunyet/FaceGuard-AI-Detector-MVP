@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { signUp } from "@/api/client";
+import logo from "@/assets/logo.png";
 
 export default function SignUpPage() {
   const [email, setEmail] = useState("");
@@ -58,55 +59,84 @@ export default function SignUpPage() {
   };
 
   return (
-    <main className="page">
-      <section className="panel panel-form">
-        <h2>Create Account (Prototype)</h2>
-        <form onSubmit={handleSubmit}>
-          <label htmlFor="email">Email</label>
-          <input
-            id="email"
-            name="email"
-            type="email"
-            placeholder="name@example.com"
-            required
-            autoComplete="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-          />
+    <main className="page auth-page">
+      <section className="auth-shell">
+        <div className="auth-brand-panel">
+          <img src={logo} alt="FaceGuard Logo" className="auth-brand-logo" />
+          <p className="auth-brand-kicker">Create Account</p>
+          <h1 className="auth-brand-title">Start your FaceGuard workspace</h1>
+          <p className="auth-brand-copy">
+            Create your account to run profile image authenticity checks with reliable model-backed explainability.
+          </p>
+          <div className="auth-brand-features">
+            <p>Fast detector workflow</p>
+            <p>Confidence and AI score insights</p>
+            <p>Grad-CAM visual interpretation</p>
+          </div>
+        </div>
 
-          <label htmlFor="password">Password</label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            placeholder="At least 6 characters"
-            required
-            autoComplete="new-password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-          />
+        <div className="auth-form-panel">
+          <h2>Create Account</h2>
+          <p className="auth-form-subtitle">Set up your access to FaceGuard.</p>
 
-          <label htmlFor="confirmPassword">Confirm Password</label>
-          <input
-            id="confirmPassword"
-            name="confirmPassword"
-            type="password"
-            placeholder="Repeat password"
-            required
-            autoComplete="new-password"
-            value={confirmPassword}
-            onChange={(event) => setConfirmPassword(event.target.value)}
-          />
+          <form className="auth-form" onSubmit={handleSubmit}>
+            <div className="auth-field">
+              <label htmlFor="email">Email</label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                placeholder="name@example.com"
+                required
+                autoComplete="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+              />
+            </div>
 
-          <button className="primary-btn" type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Creating Account..." : "Sign Up"}
-          </button>
-        </form>
+            <div className="auth-field">
+              <label htmlFor="password">Password</label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                placeholder="At least 6 characters"
+                required
+                autoComplete="new-password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+              />
+            </div>
 
-        {message ? <p className="panel-note">{isError ? `Error: ${message}` : message}</p> : null}
-        <p className="auth-switch">
-          Already have an account? <Link to="/signin">Sign In</Link>
-        </p>
+            <div className="auth-field">
+              <label htmlFor="confirmPassword">Confirm Password</label>
+              <input
+                id="confirmPassword"
+                name="confirmPassword"
+                type="password"
+                placeholder="Repeat password"
+                required
+                autoComplete="new-password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+              />
+            </div>
+
+            <button className="primary-btn auth-submit-btn" type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Creating Account..." : "Sign Up"}
+            </button>
+          </form>
+
+          {message ? (
+            <p className={isError ? "auth-feedback auth-feedback-error" : "auth-feedback auth-feedback-success"}>
+              {message}
+            </p>
+          ) : null}
+
+          <p className="auth-switch">
+            Already have an account? <Link to="/signin">Sign In</Link>
+          </p>
+        </div>
       </section>
     </main>
   );
