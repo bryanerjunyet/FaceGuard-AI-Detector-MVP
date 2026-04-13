@@ -50,7 +50,7 @@ def startup_event() -> None:
     try:
         model_service.ensure_loaded()
     except FileNotFoundError:
-        # Allow startup when checkpoint is absent; analyze returns clear 503.
+        # Allow app startup even when checkpoint is missing.
         return
 
 
@@ -124,7 +124,7 @@ def analyze_image(file: UploadFile = File(...)) -> PredictionResponse:
         std=model_service.std,
     )
 
-    result = model_service.predict(tensor)
+    result = model_service.predict(image_tensor=tensor, source_image=image)
     # storage.save_inference_event(
     #     {
     #         "label": result.label,
@@ -141,9 +141,12 @@ def analyze_image(file: UploadFile = File(...)) -> PredictionResponse:
         threshold=result.threshold,
         explanation=result.explanation,
         model_name=result.model_name,
+        heatmap_overlay=result.heatmap_overlay,
+        explainability_method=result.explainability_method,
     )
 
 
 @app.exception_handler(HTTPException)
 def http_exception_handler(_, exc: HTTPException):
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
