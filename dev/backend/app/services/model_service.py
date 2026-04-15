@@ -314,8 +314,8 @@ class InferenceService:
                 grayscale_cam = cam(
                     input_tensor=image_tensor,
                     targets=targets,
-                    aug_smooth=True,
-                    eigen_smooth=True,
+                    aug_smooth=False,
+                    eigen_smooth=False,
                 )
                 grayscale_cam = grayscale_cam[0, :]
 
